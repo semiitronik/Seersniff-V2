@@ -1,0 +1,87 @@
+# SeerSniff IDS rules configuration
+
+[GLOBAL]
+cooldownSeconds = 10
+expireAlertsSeconds = 120
+ringBufferSize = 5000
+uiFlushMillis = 200
+
+[TRUSTED]
+ips = 127.0.0.1, 192.168.1.1, 8.8.8.8
+riskMultiplier = 0.5
+confidenceMultiplier = 0.5
+
+[CORRELATION]
+windowSeconds = 30
+distinctRuleCount = 2
+scoreBonus = 10
+confidenceBonus = 0.10
+
+[SEVERITY_THRESHOLDS]
+infoMax = 19
+lowMax = 39
+mediumMax = 64
+highMax = 84
+# 85+ is CRITICAL
+
+[HIGH_RISK_PORTS]
+ports = 23, 2323, 445, 3389, 5900, 1433, 3306
+baseScore = 12
+repeatWindowSeconds = 60
+repeatScoreStep = 3
+repeatEscalateAt = 3
+maxBonusScore = 20
+
+[ICMP_BURST]
+windowSeconds = 10
+lowAt = 8
+mediumAt = 15
+highAt = 30
+lowScore = 10
+mediumScore = 20
+highScore = 35
+confidenceLow = 0.10
+confidenceMedium = 0.20
+confidenceHigh = 0.35
+
+[TCP_SYN_SCAN]
+windowSeconds = 30
+mediumAtUniquePorts = 6
+highAtUniquePorts = 10
+criticalAtUniquePorts = 20
+mediumScore = 20
+highScore = 35
+criticalScore = 55
+confidenceMedium = 0.20
+confidenceHigh = 0.35
+confidenceCritical = 0.50
+
+[UDP_FANOUT]
+windowSeconds = 30
+mediumAtUniquePorts = 8
+highAtUniquePorts = 15
+mediumScore = 15
+highScore = 30
+confidenceMedium = 0.15
+confidenceHigh = 0.30
+
+[TCP_RST_BURST]
+windowSeconds = 10
+mediumAt = 10
+highAt = 20
+mediumScore = 18
+highScore = 32
+confidenceMedium = 0.18
+confidenceHigh = 0.32
+
+[TCP_PORTSCAN_BURST]
+windowSeconds = 30
+mediumAtUniquePorts = 8
+highAtUniquePorts = 15
+criticalAtUniquePorts = 25
+mediumScore = 18
+highScore = 30
+criticalScore = 50
+confidenceMedium = 0.18
+confidenceHigh = 0.30
+confidenceCritical = 0.50
