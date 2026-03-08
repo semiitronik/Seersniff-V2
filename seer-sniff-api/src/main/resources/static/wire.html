@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>SeerSniff — Wireshark View</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg-0: #0b1020;
+            --panel: #111827;
+            --panel-2: #0f1b2d;
+            --border: #23324b;
+            --border-soft: #1b2740;
+            --text: #e2e8f0;
+            --muted: #94a3b8;
+            --accent: #38bdf8;
+            --good: #22c55e;
+            --warn: #f59e0b;
+            --high: #f97316;
+            --critical: #ef4444;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { height: 100%; }
+        body {
+            margin: 0;
+            font-family: "Space Grotesk", "IBM Plex Sans", "Segoe UI", sans-serif;
+            color: var(--text);
+            background: radial-gradient(1200px 600px at 10% -10%, #1e293b 0%, #0b1020 35%) no-repeat,
+                        radial-gradient(800px 800px at 110% 10%, #0f1b2d 0%, #0b1020 50%) no-repeat,
+                        var(--bg-0);
+        }
+
+        header {
+            padding: 16px 22px;
+            border-bottom: 1px solid var(--border);
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 12px;
+            align-items: center;
+            background: rgba(7, 12, 24, 0.9);
+        }
+
+        .title {
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+
+        .subtle {
+            color: var(--muted);
+            font-size: 0.82rem;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.78rem;
+            padding: 4px 8px;
+            border-radius: 999px;
+            border: 1px solid var(--border-soft);
+            background: #0b1526;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            background: var(--critical);
+        }
+
+        .layout {
+            display: grid;
+            grid-template-rows: auto minmax(0, 1fr) minmax(0, 260px);
+            gap: 12px;
+            padding: 18px 22px 22px;
+            height: calc(100vh - 72px);
+        }
+
+        .filter-bar {
+            background: var(--panel-2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px;
+            display: grid;
+            grid-template-columns: repeat(5, auto) 1fr auto auto;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .input {
+            width: 100%;
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border-soft);
+            background: var(--panel);
+            color: var(--text);
+        }
+
+        .btn {
+            padding: 9px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border-soft);
+            background: #0b1526;
+            color: var(--text);
+            cursor: pointer;
+        }
+
+        .btn.primary {
+            background: linear-gradient(135deg, #0ea5e9, #38bdf8);
+            border-color: transparent;
+            color: #06121f;
+            font-weight: 600;
+        }
+
+        .btn.ghost { background: transparent; }
+
+        .toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.78rem;
+            color: var(--muted);
+        }
+
+        .toggle input { accent-color: var(--accent); }
+
+        .packet-table {
+            background: var(--panel-2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            display: grid;
+            grid-template-rows: auto 1fr;
+            min-height: 0;
+        }
+
+        .packet-header, .packet-row {
+            display: grid;
+            grid-template-columns: 60px 90px 140px 140px 80px 70px 70px 70px 1.4fr 90px 70px 90px;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.78rem;
+            padding: 6px 10px;
+            border-bottom: 1px solid var(--border-soft);
+        }
+
+        .packet-header {
+            background: rgba(7, 12, 24, 0.8);
+            color: var(--muted);
+            text-transform: uppercase;
+            font-size: 0.65rem;
+            letter-spacing: 0.08em;
+        }
+
+        .packet-viewport {
+            overflow: auto;
+            position: relative;
+            min-height: 0;
+        }
+
+        .packet-spacer { height: 0; }
+
+        .packet-rows {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+        }
+
+        .packet-row {
+            cursor: pointer;
+            background: rgba(7, 12, 24, 0.4);
+            border-bottom: 1px solid rgba(35, 50, 75, 0.5);
+        }
+
+        .packet-row.selected { outline: 2px solid var(--accent); }
+
+        .row-info { border-left: 3px solid #64748b; }
+        .row-low { border-left: 3px solid var(--good); background: rgba(34, 197, 94, 0.08); }
+        .row-medium { border-left: 3px solid var(--warn); background: rgba(245, 158, 11, 0.1); }
+        .row-high { border-left: 3px solid var(--high); background: rgba(249, 115, 22, 0.12); }
+        .row-critical { border-left: 3px solid var(--critical); background: rgba(239, 68, 68, 0.18); }
+
+        .details-grid {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr 1fr;
+            gap: 12px;
+            min-height: 0;
+        }
+
+        .panel {
+            background: var(--panel-2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px;
+            display: grid;
+            gap: 10px;
+            min-height: 0;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+        }
+
+        .details-pre {
+            font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+            font-size: 0.75rem;
+            white-space: pre-wrap;
+            word-break: break-word;
+            margin: 0;
+        }
+
+        .details-actions { display: flex; gap: 8px; }
+
+        @media (max-width: 1200px) {
+            .details-grid { grid-template-columns: 1fr; }
+            .filter-bar { grid-template-columns: 1fr 1fr; }
+        }
+    </style>
+</head>
+<body>
+<header>
+    <div>
+        <div class="title">Wireshark View</div>
+        <div class="subtle">Live packet capture with IDS overlay</div>
+    </div>
+    <div class="status-pill"><span id="wsDot" class="dot"></span><span id="wsStatus">Disconnected</span></div>
+</header>
+
+<div class="layout">
+    <div class="filter-bar">
+        <button id="wireStart" class="btn primary">Start</button>
+        <button id="wireStop" class="btn">Stop</button>
+        <button id="wirePause" class="btn">Pause UI</button>
+        <button id="wireExport" class="btn">Export CSV</button>
+        <label class="toggle"><input id="wireAuto" type="checkbox" checked /> Auto Scroll</label>
+        <input id="wireFilter" class="input" placeholder="filter: ip:1.2.3.4 src:10.0.0.5 proto:tcp port:443 severity:high score>=65" />
+        <button id="wireApply" class="btn">Apply</button>
+        <button id="wireReset" class="btn ghost">Clear</button>
+    </div>
+
+    <div class="packet-table">
+        <div class="packet-header">
+            <div>No.</div>
+            <div>Time</div>
+            <div>Source</div>
+            <div>Destination</div>
+            <div>Protocol</div>
+            <div>Src Port</div>
+            <div>Dst Port</div>
+            <div>Length</div>
+            <div>Info</div>
+            <div>Severity</div>
+            <div>Score</div>
+            <div>Confidence</div>
+        </div>
+        <div id="packetViewport" class="packet-viewport">
+            <div id="packetSpacer" class="packet-spacer"></div>
+            <div id="packetRows" class="packet-rows"></div>
+        </div>
+    </div>
+
+    <div class="details-grid">
+        <div class="panel">
+            <div class="panel-header">
+                <span>Packet Details</span>
+                <div class="details-actions">
+                    <button id="copySrc" class="btn ghost">Copy src</button>
+                    <button id="copyDst" class="btn ghost">Copy dst</button>
+                    <button id="copyIp" class="btn ghost">Copy ip</button>
+                </div>
+            </div>
+            <pre id="wireDetails" class="details-pre">Select a packet row to view details.</pre>
+        </div>
+        <div class="panel">
+            <div class="panel-header">IDS Findings</div>
+            <pre id="wireFindings" class="details-pre">Waiting for selection.</pre>
+        </div>
+        <div class="panel">
+            <div class="panel-header">Hex / ASCII</div>
+            <pre id="wireHex" class="details-pre">Payload not captured</pre>
+            <pre id="wireAscii" class="details-pre"></pre>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+<script>
+    function qs(name) { return new URL(window.location.href).searchParams.get(name); }
+
+    const els = {
+        wsStatus: document.getElementById('wsStatus'),
+        wsDot: document.getElementById('wsDot'),
+        wireStart: document.getElementById('wireStart'),
+        wireStop: document.getElementById('wireStop'),
+        wirePause: document.getElementById('wirePause'),
+        wireExport: document.getElementById('wireExport'),
+        wireApply: document.getElementById('wireApply'),
+        wireReset: document.getElementById('wireReset'),
+        wireFilter: document.getElementById('wireFilter'),
+        wireAuto: document.getElementById('wireAuto'),
+        packetViewport: document.getElementById('packetViewport'),
+        packetSpacer: document.getElementById('packetSpacer'),
+        packetRows: document.getElementById('packetRows'),
+        wireDetails: document.getElementById('wireDetails'),
+        wireFindings: document.getElementById('wireFindings'),
+        wireHex: document.getElementById('wireHex'),
+        wireAscii: document.getElementById('wireAscii'),
+        copySrc: document.getElementById('copySrc'),
+        copyDst: document.getElementById('copyDst'),
+        copyIp: document.getElementById('copyIp'),
+    };
+
+    const MAX_PACKETS = 5000;
+    const PACKET_FLUSH_MS = 200;
+    const ROW_HEIGHT = 26;
+
+    let packetStart = 0;
+    let packetSize = 0;
+    const packetRing = new Array(MAX_PACKETS);
+    let packetSeq = 0;
+    let packetQueue = [];
+    let packetPaused = false;
+    let packetNeedsRebuild = false;
+    let packetFiltered = [];
+    let packetFilterRules = [];
+    let packetSelected = null;
+    let packetAutoScroll = true;
+
+    function activeSensor() {
+        return (qs('sensorId') || 'desktop-sniffer-1').trim();
+    }
+
+    function setWsStatus(connected) {
+        els.wsStatus.textContent = connected ? 'Connected' : 'Disconnected';
+        els.wsDot.style.background = connected ? '#22c55e' : '#ef4444';
+    }
+
+    async function sendCmd(type) {
+        const cmd = {
+            sensorId: activeSensor(),
+            type,
+            ifaceIndex: type === 'STOP' ? null : 0,
+            packetId: null,
+        };
+
+        const res = await fetch('/command/send', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(cmd),
+        });
+
+        if (!res.ok) {
+            alert('Command failed: HTTP ' + res.status);
+        }
+    }
+
+    function formatTime(ts) {
+        if (!ts) return '';
+        try {
+            return new Date(ts).toLocaleTimeString();
+        } catch {
+            return '';
+        }
+    }
+
+    function severityRowClass(sev) {
+        const s = (sev || 'INFO').toLowerCase();
+        if (s === 'critical') return 'row-critical';
+        if (s === 'high') return 'row-high';
+        if (s === 'medium') return 'row-medium';
+        if (s === 'low') return 'row-low';
+        return 'row-info';
+    }
+
+    function normalizeProtocol(proto) {
+        return (proto || 'OTHER').toUpperCase();
+    }
+
+    function packetInfo(p) {
+        if (p.info) return p.info;
+        const proto = normalizeProtocol(p.protocol);
+        const src = p.srcIp ? (p.srcIp + (p.srcPort ? ':' + p.srcPort : '')) : '';
+        const dst = p.dstIp ? (p.dstIp + (p.dstPort ? ':' + p.dstPort : '')) : '';
+        if (src || dst) return proto + ' ' + src + ' -> ' + dst;
+        return proto;
+    }
+
+    function ringToArray() {
+        const out = new Array(packetSize);
+        for (let i = 0; i < packetSize; i += 1) {
+            out[i] = packetRing[(packetStart + i) % MAX_PACKETS];
+        }
+        return out;
+    }
+
+    function addPacketToRing(p) {
+        packetSeq += 1;
+        p.__seq = packetSeq;
+        const idx = (packetStart + packetSize) % MAX_PACKETS;
+        if (packetSize < MAX_PACKETS) {
+            packetRing[idx] = p;
+            packetSize += 1;
+        } else {
+            packetRing[packetStart] = p;
+            packetStart = (packetStart + 1) % MAX_PACKETS;
+            packetNeedsRebuild = true;
+        }
+    }
+
+    function parseFilter(input) {
+        const tokens = (input || '').trim().split(/\s+/).filter(Boolean);
+        const rules = [];
+        tokens.forEach(token => {
+            const scoreMatch = token.match(/^score(>=|<=|>|<|=)(\d+)$/i);
+            if (scoreMatch) {
+                rules.push({ type: 'score', op: scoreMatch[1], value: Number(scoreMatch[2]) });
+                return;
+            }
+            const idx = token.indexOf(':');
+            if (idx <= 0) return;
+            const key = token.slice(0, idx).toLowerCase();
+            const raw = token.slice(idx + 1).toLowerCase();
+            if (!raw) return;
+            rules.push({ type: key, values: raw.split('|').map(x => x.trim()).filter(Boolean) });
+        });
+        return rules;
+    }
+
+    function matchesFilter(p, rules) {
+        if (!rules.length) return true;
+        const srcIp = (p.srcIp || '').toLowerCase();
+        const dstIp = (p.dstIp || '').toLowerCase();
+        const proto = (p.protocol || '').toLowerCase();
+        const severity = (p.severity || 'INFO').toLowerCase();
+        const srcPort = p.srcPort != null ? String(p.srcPort) : '';
+        const dstPort = p.dstPort != null ? String(p.dstPort) : '';
+        const score = p.score != null ? Number(p.score) : 0;
+
+        return rules.every(rule => {
+            if (rule.type === 'score') {
+                if (rule.op === '>=') return score >= rule.value;
+                if (rule.op === '<=') return score <= rule.value;
+                if (rule.op === '>') return score > rule.value;
+                if (rule.op === '<') return score < rule.value;
+                return score === rule.value;
+            }
+            switch (rule.type) {
+                case 'ip':
+                    return rule.values.some(v => srcIp.includes(v) || dstIp.includes(v));
+                case 'src':
+                    return rule.values.some(v => srcIp.includes(v));
+                case 'dst':
+                    return rule.values.some(v => dstIp.includes(v));
+                case 'proto':
+                    return rule.values.some(v => proto === v);
+                case 'port':
+                    return rule.values.some(v => srcPort === v || dstPort === v);
+                case 'severity':
+                    return rule.values.some(v => severity === v);
+                default:
+                    return true;
+            }
+        });
+    }
+
+    function applyPacketFilter() {
+        packetFilterRules = parseFilter(els.wireFilter.value);
+        packetFiltered = ringToArray().filter(p => matchesFilter(p, packetFilterRules));
+        renderPacketViewport(true);
+    }
+
+    function renderPacketViewport(forceScroll = false) {
+        const viewport = els.packetViewport;
+        const total = packetFiltered.length;
+        els.packetSpacer.style.height = (total * ROW_HEIGHT) + 'px';
+
+        const scrollTop = viewport.scrollTop;
+        const viewHeight = viewport.clientHeight;
+        const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 10);
+        const visibleCount = Math.ceil(viewHeight / ROW_HEIGHT) + 20;
+        const endIndex = Math.min(total, startIndex + visibleCount);
+
+        els.packetRows.style.transform = 'translateY(' + (startIndex * ROW_HEIGHT) + 'px)';
+        els.packetRows.innerHTML = '';
+
+        for (let i = startIndex; i < endIndex; i += 1) {
+            const p = packetFiltered[i];
+            const row = document.createElement('div');
+            row.className = 'packet-row ' + severityRowClass(p.severity);
+            row.dataset.packetId = p.packetId;
+            row.innerHTML = `
+                <div>${p.__seq}</div>
+                <div>${formatTime(p.ts)}</div>
+                <div>${p.srcIp || ''}</div>
+                <div>${p.dstIp || ''}</div>
+                <div>${normalizeProtocol(p.protocol)}</div>
+                <div>${p.srcPort != null ? p.srcPort : ''}</div>
+                <div>${p.dstPort != null ? p.dstPort : ''}</div>
+                <div>${p.length != null ? p.length : ''}</div>
+                <div>${packetInfo(p)}</div>
+                <div>${(p.severity || 'INFO').toUpperCase()}</div>
+                <div>${p.score != null ? p.score : ''}</div>
+                <div>${p.confidence != null ? Number(p.confidence).toFixed(2) : ''}</div>
+            `;
+            if (packetSelected && packetSelected.packetId === p.packetId) {
+                row.classList.add('selected');
+            }
+            row.onclick = () => selectPacket(p);
+            els.packetRows.appendChild(row);
+        }
+
+        if ((packetAutoScroll && !packetPaused) || forceScroll) {
+            viewport.scrollTop = viewport.scrollHeight;
+        }
+    }
+
+    function enqueuePacket(p) {
+        packetQueue.push(p);
+    }
+
+    function flushPackets() {
+        if (packetPaused) return;
+        if (!packetQueue.length) return;
+
+        packetQueue.forEach(p => {
+            addPacketToRing(p);
+            if (!packetNeedsRebuild && matchesFilter(p, packetFilterRules)) {
+                packetFiltered.push(p);
+            }
+        });
+        packetQueue = [];
+
+        if (packetNeedsRebuild) {
+            applyPacketFilter();
+            packetNeedsRebuild = false;
+        } else {
+            renderPacketViewport();
+        }
+    }
+
+    function resetPacketDetails() {
+        els.wireDetails.textContent = 'Select a packet row to view details.';
+        els.wireFindings.textContent = 'Waiting for selection.';
+        els.wireHex.textContent = 'Payload not captured';
+        els.wireAscii.textContent = '';
+    }
+
+    function hexToAscii(hex) {
+        const clean = (hex || '').replace(/[^0-9a-fA-F]/g, '');
+        const chars = [];
+        for (let i = 0; i < clean.length; i += 2) {
+            const b = parseInt(clean.slice(i, i + 2), 16);
+            if (Number.isNaN(b)) continue;
+            chars.push((b >= 32 && b <= 126) ? String.fromCharCode(b) : '.');
+            if (((i / 2) + 1) % 16 === 0) chars.push('\n');
+        }
+        return chars.join('');
+    }
+
+    async function selectPacket(p) {
+        packetSelected = p;
+        renderPacketViewport();
+        try {
+            const res = await fetch(`/ingest/packet/${encodeURIComponent(p.sensorId || activeSensor())}/${p.packetId}`);
+            if (!res.ok) {
+                els.wireDetails.textContent = 'Failed to load packet details: HTTP ' + res.status;
+                return;
+            }
+            const d = await res.json();
+            if (!d) {
+                els.wireDetails.textContent = 'No packet details for packetId=' + p.packetId;
+                return;
+            }
+            const lines = [
+                `packetId: ${d.packetId}`,
+                `timestamp: ${d.ts ? new Date(d.ts).toISOString() : ''}`,
+                `src: ${d.srcIp || ''}${d.srcPort != null ? ':' + d.srcPort : ''}`,
+                `dst: ${d.dstIp || ''}${d.dstPort != null ? ':' + d.dstPort : ''}`,
+                `protocol: ${d.protocol || ''}`,
+                `length: ${d.length != null ? d.length : ''}`,
+                `severity: ${d.severity || ''}`,
+                `score: ${d.score}`,
+                `confidence: ${d.confidence != null ? Number(d.confidence).toFixed(2) : ''}`,
+                `info: ${d.info || ''}`,
+            ];
+            els.wireDetails.textContent = lines.join('\n');
+
+            const reasons = Array.isArray(d.reasons) ? d.reasons : [];
+            const findings = Array.isArray(d.findings) ? d.findings : [];
+            const evidence = Array.isArray(d.evidence) ? d.evidence : [];
+            const ruleScores = d.ruleScores ? JSON.stringify(d.ruleScores, null, 2) : '';
+            const findingLines = [
+                'reasons:',
+                reasons.length ? '- ' + reasons.join('\n- ') : '(none)',
+                '',
+                'findings:',
+                findings.length ? '- ' + findings.join('\n- ') : '(none)',
+                '',
+                'evidence:',
+                evidence.length ? '- ' + evidence.join('\n- ') : '(none)',
+                '',
+                'ruleScores:',
+                ruleScores || '(none)',
+            ];
+            els.wireFindings.textContent = findingLines.join('\n');
+
+            const payloadHex = d.payloadHex || '';
+            if (payloadHex) {
+                els.wireHex.textContent = payloadHex;
+                els.wireAscii.textContent = hexToAscii(payloadHex);
+            } else {
+                els.wireHex.textContent = 'Payload not captured';
+                els.wireAscii.textContent = '';
+            }
+        } catch (e) {
+            console.error(e);
+            els.wireDetails.textContent = 'Error loading packet details.';
+        }
+    }
+
+    function setClipboard(text) {
+        if (!text) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text);
+        }
+    }
+
+    function connectWs() {
+        const socket = new SockJS('/ws');
+        const stomp = Stomp.over(socket);
+        stomp.debug = () => {};
+
+        stomp.connect({}, () => {
+            setWsStatus(true);
+
+            stomp.subscribe('/topic/packets', msg => {
+                const p = JSON.parse(msg.body);
+                if (p.sensorId && p.sensorId !== activeSensor()) return;
+                enqueuePacket(p);
+            });
+        }, () => {
+            setWsStatus(false);
+            setTimeout(connectWs, 2000);
+        });
+    }
+
+    els.wireStart.onclick = () => sendCmd('START');
+    els.wireStop.onclick = () => sendCmd('STOP');
+    els.wirePause.onclick = () => {
+        packetPaused = !packetPaused;
+        els.wirePause.textContent = packetPaused ? 'Resume UI' : 'Pause UI';
+        if (!packetPaused) {
+            packetNeedsRebuild = true;
+            applyPacketFilter();
+        }
+    };
+    els.wireApply.onclick = applyPacketFilter;
+    els.wireReset.onclick = () => {
+        els.wireFilter.value = '';
+        applyPacketFilter();
+    };
+    els.wireFilter.onkeydown = (e) => {
+        if (e.key === 'Enter') applyPacketFilter();
+    };
+    els.wireAuto.onchange = () => {
+        packetAutoScroll = els.wireAuto.checked;
+    };
+
+    els.packetViewport.addEventListener('scroll', () => {
+        const viewport = els.packetViewport;
+        const nearBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 30;
+        if (!nearBottom && packetAutoScroll) {
+            packetAutoScroll = false;
+            els.wireAuto.checked = false;
+        }
+        renderPacketViewport();
+    });
+
+    els.copySrc.onclick = () => packetSelected && setClipboard('src:' + (packetSelected.srcIp || ''));
+    els.copyDst.onclick = () => packetSelected && setClipboard('dst:' + (packetSelected.dstIp || ''));
+    els.copyIp.onclick = () => packetSelected && setClipboard('ip:' + (packetSelected.srcIp || packetSelected.dstIp || ''));
+
+    els.wireExport.onclick = () => {
+        const rows = packetFiltered;
+        const header = ['No', 'Time', 'Source', 'Destination', 'Protocol', 'Src Port', 'Dst Port', 'Length', 'Info', 'Severity', 'Score', 'Confidence'];
+        const lines = [header.join(',')];
+        rows.forEach(p => {
+            const line = [
+                p.__seq,
+                formatTime(p.ts),
+                p.srcIp || '',
+                p.dstIp || '',
+                normalizeProtocol(p.protocol),
+                p.srcPort != null ? p.srcPort : '',
+                p.dstPort != null ? p.dstPort : '',
+                p.length != null ? p.length : '',
+                packetInfo(p).replace(/"/g, '""'),
+                (p.severity || 'INFO').toUpperCase(),
+                p.score != null ? p.score : '',
+                p.confidence != null ? Number(p.confidence).toFixed(2) : '',
+            ];
+            lines.push('"' + line.join('","') + '"');
+        });
+        const blob = new Blob([lines.join('\n')], {type: 'text/csv'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `wireshark-view-${activeSensor()}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    (function init() {
+        const filter = qs('filter');
+        if (filter) {
+            els.wireFilter.value = filter;
+        }
+        applyPacketFilter();
+        resetPacketDetails();
+        connectWs();
+        setInterval(flushPackets, PACKET_FLUSH_MS);
+    })();
+</script>
+</body>
+</html>
